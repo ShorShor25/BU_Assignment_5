@@ -1,0 +1,10 @@
+(1) 402771968 bytes
+(2) 402771968 bytes per instance (or approximately 2013859840 bytes across all 5 instances concurrently)
+(3) 
+Observations:
+- Memory Usage: Under normal execution, each process has a USS of ~393,332 KB (~400 MB) because both the input and output images are privately allocated on the heap via malloc. Under mmap, the USS drops by roughly half to ~196,708 KB (~200 MB) per process because the input image is mapped read-only into memory (MAP_SHARED) and shared across all 5 processes via the OS page cache. Only the output image buffer remains unique/private to each process.
+- Execution Time & Graph Shape: The mmap processes reach peak memory almost instantaneously (~2 seconds) because memory mapping does not read all bytes upfront into heap buffers, where normal execution shows a prolonged initial slope (~30 seconds) while each process performs sequential disk reads, BMP header parsing, and heap copies. Overall execution time is faster with mmap (~121 seconds vs ~143 seconds) due to reduced physical memory pressure, eliminated duplicate I/O, and better cache locality across the shared pages.
+(4)
+A minor page fault occurs when the requested page is already present in physical RAM (e.g., resident in the OS page cache or an anonymous zero-initialized page allocated via malloc/brk/mmap), but its virtual-to-physical address translation has not yet been registered in the process's page table. The OS kernel resolves it simply by creating the page table entry, which requires zero disk I/O.
+
+A major page fault occurs when the requested virtual memory page is not present in physical RAM at all (e.g., the page was evicted from the page cache, swapped out to disk, or has not yet been read from storage). Resolving a major page fault requires the CPU to block the process, issue an I/O request to read the missing block from physical disk/storage into a free RAM frame, and then update the page table, making it orders of magnitude slower than a minor page fault.
